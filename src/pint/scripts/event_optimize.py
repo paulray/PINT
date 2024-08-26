@@ -712,12 +712,6 @@ def main(argv=None):
     outprof_nbins = 256  # in the text file, for pygaussfit.py, for instance
     minMJD = args.minMJD
     maxMJD = args.maxMJD  # Usually set by coverage of IERS file
-    if maxMJD <= 0.0:
-        maxMJD = (
-            pyfits.getval(eventfile, "MJDREFI", ext=1)
-            + pyfits.getval(eventfile, "TSTOP", ext=1) / 86400.0
-        )
-        log.info(f"maxMJD not set, using TSTOP of MJD {maxMJD}")
 
     minWeight = args.minWeight
     do_opt_first = args.doOpt
