@@ -9,13 +9,14 @@ dispersion measures (:class:`pint.residuals.WidebandTOAResiduals`).
 
 import collections
 import copy
-from typing import Dict, List, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional, Tuple, Union
 import warnings
 
 import astropy.units as u
 import numpy as np
 from loguru import logger as log
 from scipy.linalg import cho_factor, cho_solve, LinAlgError
+from scipy.stats import kstest
 
 from pint import dmu
 from pint.models.dispersion_model import Dispersion
@@ -28,6 +29,7 @@ from pint.utils import (
     taylor_horner_deriv,
     weighted_mean,
     woodbury_dot,
+    anderson_darling,
 )
 
 __all__ = [
@@ -586,6 +588,49 @@ class Residuals:
             return whiten_residuals(r, errs, U, Phidiag)
         else:
             return r / errs
+
+    def whitened_resids_kstest(self) -> Tuple[float, float]:
+        """Checks if the whitened residuals are unit-normal distributed using a KS test. A small p-value indicates a
+        significant departure from unit-Gaussianity.
+
+        Returns
+        -------
+        float :
+            A-D statistic
+        float :
+            p-value
+
+        See also
+        --------
+        :meth:`~pint.residuals.Residuals.whitened_resids_adtest`
+        """
+        rw = self.calc_whitened_resids().astype(float)
+        ks = kstest(rw, "norm", args=(0, 1))
+        return ks.statistic, ks.pvalue
+
+    def whitened_resids_adtest(self) -> Tuple[float, float]:
+        """Checks if the whitened residuals are unit-normal distributed using an Anderson-Darling test. A small p-value indicates a
+        significant departure from unit-Gaussianity.
+
+        The Anderson-Darling test has more discriminatory power than the K-S test.
+
+        Returns
+        -------
+        float :
+            A-D statistic
+        float :
+            p-value
+
+        See also
+        --------
+        :meth:`~pint.residuals.Residuals.whitened_resids_kstest`
+
+        Notes
+        -----
+        Calculation done in :func:`pint.utils.anderson_darling`.
+        """
+        rw = self.calc_whitened_resids().astype(float)
+        return anderson_darling(rw)
 
     def _calc_gls_chi2(self, lognorm: bool = False) -> float:
         """Compute the chi2 when correlated noise is present in the timing model.
@@ -1340,6 +1385,49 @@ class WidebandTOAResiduals(CombinedResiduals):
             return whiten_residuals(r, errs, U, Phidiag)
         else:
             return r / errs
+
+    def whitened_resids_kstest(self) -> Tuple[float, float]:
+        """Checks if the whitened residuals are unit-normal distributed using a KS test. A small p-value indicates a
+        significant departure from unit-Gaussianity.
+
+        Returns
+        -------
+        float :
+            A-D statistic
+        float :
+            p-value
+
+        See also
+        --------
+        :meth:`~pint.residuals.WidebandTOAResiduals.whitened_resids_adtest`
+        """
+        rw = self.calc_wideband_whitened_resids().astype(float)
+        ks = kstest(rw, "norm", args=(0, 1))
+        return ks.statistic, ks.pvalue
+
+    def whitened_resids_adtest(self) -> Tuple[float, float]:
+        """Checks if the whitened residuals are unit-normal distributed using an Anderson-Darling test. A small p-value indicates a
+        significant departure from unit-Gaussianity.
+
+        The Anderson-Darling test has more discriminatory power than the K-S test.
+
+        Returns
+        -------
+        float :
+            A-D statistic
+        float :
+            p-value
+
+        See also
+        --------
+        :meth:`~pint.residuals.WidebandTOAResiduals.whitened_resids_kstest`
+
+        Notes
+        -----
+        Calculation done in :func:`pint.utils.anderson_darling`.
+        """
+        rw = self.calc_wideband_whitened_resids().astype(float)
+        return anderson_darling(rw)
 
 
 def whiten_residuals(
