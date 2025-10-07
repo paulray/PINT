@@ -3,6 +3,7 @@
 import astropy.constants as const
 import astropy.io.fits as pyfits
 import astropy.units as u
+from astropy.time import Time
 import numpy as np
 from astropy.coordinates import EarthLocation
 from astropy.table import Table, vstack
@@ -11,7 +12,9 @@ from scipy.interpolate import InterpolatedUnivariateSpline
 
 from pint.fits_utils import read_fits_event_mjds
 from pint.observatory.special_locations import SpecialLocation
-from pint.solar_system_ephemerides import objPosVel_wrt_SSB
+from pint.solar_system_ephemerides import get_tdb_tt_ephem_geocenter, objPosVel_wrt_SSB
+from pint import JD_MJD
+
 from pint.utils import PosVel
 
 
@@ -374,6 +377,35 @@ class SatelliteObs(SpecialLocation):
         log.debug("\tTopocentric Correction:\t%s" % corr)
 
         return t.tdb + corr
+
+    def _get_TDB_ephem(self, t, ephem):
+        """Read the ephem TDB-TT column.
+
+        This column is provided by DE430t (and later) versions of the JPL
+        ephemeris files.
+        This function is only for the ground-based observatories
+
+        """
+        geo_tdb_tt = get_tdb_tt_ephem_geocenter(t.tt, ephem)
+
+        # Add in correction term to t.tdb equal to r.v / c^2
+        vel = objPosVel_wrt_SSB("earth", t, ephem).vel
+        pos = self.get_gcrs(t, ephem=ephem)
+        dnom = const.c * const.c
+
+        topo_time_corr = (
+            (pos[0] * vel[0] + pos[1] * vel[1] + pos[2] * vel[2]) / dnom
+        ).to(u.s)
+        log.debug("\tTopocentric Correction:\t%s" % topo_time_corr)
+
+        topo_tdb_tt = geo_tdb_tt + topo_time_corr
+        return Time(
+            t.tt.jd1 - JD_MJD,
+            t.tt.jd2 + topo_tdb_tt.to(u.day).value,
+            format="pulsar_mjd",
+            scale="tdb",
+            location=self.earth_location_itrf(),  # What should location be for satellite?
+        )
 
     def get_gcrs(self, t, ephem=None):
         """Return position vector of S/C in GCRS.

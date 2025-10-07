@@ -370,7 +370,9 @@ class TopoObs(Observatory):
         """Read the ephem TDB-TT column.
 
         This column is provided by DE4XXt version of ephemeris. This function is only
-        for the ground-based observatories
+        for the ground-based observatories.
+        The ephemeris provides the TDB-TT correction for the geocenter, so
+        we need to manually add the topocentric correction.
 
         """
         geo_tdb_tt = get_tdb_tt_ephem_geocenter(t.tt, ephem)
@@ -385,11 +387,15 @@ class TopoObs(Observatory):
         # NOTE
         # Moyer (1981) and Murray (1983), with fundamental arguments adapted
         # from Simon et al. 1994.
-        topo_time_corr = np.sum(earth_pv.vel / c.c * obs_geocenter_pv.pos / c.c, axis=0)
-        topo_tdb_tt = geo_tdb_tt - topo_time_corr
+        topo_time_corr = np.sum(
+            earth_pv.vel / c.c * obs_geocenter_pv.pos / c.c, axis=0
+        ).to(u.s)
+        log.debug("\tTopocentric Correction:\n%s us " % topo_time_corr.to(u.us))
+
+        topo_tdb_tt = geo_tdb_tt + topo_time_corr
         return Time(
             t.tt.jd1 - JD_MJD,
-            t.tt.jd2 - topo_tdb_tt.to(u.day).value,
+            t.tt.jd2 + topo_tdb_tt.to(u.day).value,
             format="pulsar_mjd",
             scale="tdb",
             location=self.earth_location_itrf(),

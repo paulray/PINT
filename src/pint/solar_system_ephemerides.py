@@ -18,11 +18,12 @@ from pint.utils import PosVel
 __all__ = ["objPosVel_wrt_SSB", "get_tdb_tt_ephem_geocenter"]
 
 ephemeris_mirrors = [
-    # NOTE the JPL ftp site is disabled for our automatic builds. Instead,
+    # NOTE the JPL site is disabled for our automatic builds. Instead,
     # we duplicated the JPL ftp site on the nanograv server.
-    # Search nanograv server first, then the other two.
-    # "https://data.nanograv.org/static/data/ephem/",
-    "ftp://ssd.jpl.nasa.gov/pub/eph/planets/bsp/",
+    # Search nanograv server first, then the others.
+    "https://data.nanograv.org/static/data/ephem/",
+    # This site includes the "t" versions of DE430 through DE440
+    "https://ssd.jpl.nasa.gov/ftp/eph/planets/bsp/",
     "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/a_old_versions/",
     # DE440 is here, officially
     "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/",
@@ -309,6 +310,7 @@ def get_tdb_tt_ephem_geocenter(
     Returns
     -------
     tdb_tt_correction : u.Quantity
+        TDB-TT evaluted at the input time
 
     Note
     ----
@@ -316,6 +318,12 @@ def get_tdb_tt_ephem_geocenter(
     not provide it. The definition for TDB-TT column is described in the
     paper:
     https://ipnpr.jpl.nasa.gov/progress_report/42-196/196C.pdf page 6.
+
+    "For DE430 and DE431, the NEGATIVE of the quantity TDB-TT from Equation (5) evaluated at
+    the geocenter has been numerically integrated and saved as a set of Chebyshev polynomial
+    coefficients in a format similar to the positions and velocities of the
+    bodies. For measurement reduction, TT-TDB as a function of TT is also
+    needed; it can be computed by a simple iterative technique."
     """
     load_kernel(ephem, path=path, link=link)
     kernel = astropy.coordinates.solar_system_ephemeris._kernel
@@ -324,5 +332,9 @@ def get_tdb_tt_ephem_geocenter(
         seg = kernel[1000000000, 1000000001]
     except KeyError:
         raise ValueError("Ephemeris '%s.bsp' do not provide the TDB-TT correction.")
-    tdb_tt = seg.compute(tt.jd1, tt.jd2)[0]
+    # WARNING: I believe that this table is as a function of TDB, while we are
+    # looking up using TT
+
+    # Flip the sign of the correction, so we are returning TDB-TT
+    tdb_tt = -1.0 * seg.compute(tt.jd1, tt.jd2)[0]
     return tdb_tt * u.second
