@@ -9,8 +9,11 @@ the released changes.
 
 ## Unreleased
 ### Changed
+- Change `StepProblem` and `MaxIterReached` into warnings
 ### Added
 - Anderson-Darling test for normal data with fixed mean/variance
 - KS test to check if the whitened residuals are unit-normal distributed
+- Warning about setting of TZRMJD from TOAs
+- Method to zero out mean residual based on TZRMJD
 ### Fixed
 ### Removed
