@@ -230,6 +230,9 @@ def main(argv=None):
         hdulist = pyfits.open(args.eventfile)
         data = hdulist[1].data
         mjds = read_fits_event_mjds(hdulist[1])
+        if len(mjds) == 0:
+            log.warning("No Events. Exiting...")
+            sys.exit(0)
         minmjd = min(mjds)
         maxmjd = max(mjds)
 

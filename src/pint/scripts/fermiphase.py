@@ -62,6 +62,12 @@ def main(argv=None):
         default=False,
         action="store_true",
     )
+    parser.add_argument(
+        "--include_bipm",
+        help="Include BIPM corrections",
+        default=False,
+        action="store_true",
+    )
     parser.add_argument("--ephem", help="Planetary ephemeris to use", default="DE421")
     parser.add_argument(
         "--log-level",
@@ -127,6 +133,7 @@ def main(argv=None):
         weightcolumn=args.weightcol,
         targetcoord=tc,
         planets=args.planets,
+        include_bipm=args.include_bipm,
         ephem=args.ephem,
     )
     ts.filename = args.eventfile
