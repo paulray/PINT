@@ -1,5 +1,4 @@
-"""Functions to compute various derived quantities from pulsar spin parameters, masses, etc.
-"""
+"""Functions to compute various derived quantities from pulsar spin parameters, masses, etc."""
 
 from typing import Optional, Union
 
@@ -325,7 +324,7 @@ def mass_funct(pb: u.Quantity, x: u.Quantity) -> u.Msun:
     pb : astropy.units.Quantity
         Binary period
     x : astropy.units.Quantity
-        Semi-major axis, A1SINI, in units of ``pint.ls``
+        Semi-major axis, A1SINI, in units of ``u.lsec``
 
     Returns
     -------
@@ -351,8 +350,7 @@ def mass_funct(pb: u.Quantity, x: u.Quantity) -> u.Msun:
 
     .. [1] Lorimer & Kramer, 2008, "The Handbook of Pulsar Astronomy", Eqn. 8.34 (RHS)
     """
-    fm = 4.0 * np.pi**2 * x**3 / (const.G * pb**2)
-    return fm.to(u.solMass)
+    return (4 * np.pi**2 * x**3 / pint.GMsun / pb**2).decompose() * u.Msun
 
 
 @u.quantity_input(mp=u.Msun, mc=u.Msun, i=u.deg)
@@ -412,7 +410,7 @@ def pulsar_mass(pb: u.Quantity, x: u.Quantity, mc: u.Quantity, i: u.Quantity) ->
     pb : astropy.units.Quantity
         Binary orbital period
     x : astropy.units.Quantity
-        Projected pulsar semi-major axis (aka ASINI) in ``pint.ls``
+        Projected pulsar semi-major axis (aka ASINI) in ``u.lsec``
     mc : astropy.units.Quantity
         Companion mass in ``u.solMass``
     i : astropy.coordinates.Angle or astropy.units.Quantity
@@ -435,7 +433,7 @@ def pulsar_mass(pb: u.Quantity, x: u.Quantity, mc: u.Quantity, i: u.Quantity) ->
     >>> import pint
     >>> import pint.derived_quantities
     >>> from astropy import units as u
-    >>> print(pint.derived_quantities.pulsar_mass(2*u.hr, .2*pint.ls, 0.5*u.Msun, 60*u.deg))
+    >>> print(pint.derived_quantities.pulsar_mass(2*u.hr, .2*u.lsec, 0.5*u.Msun, 60*u.deg))
     7.6018341985817885 solMass
 
 
@@ -485,7 +483,7 @@ def companion_mass(
     pb : astropy.units.Quantity
         Binary orbital period
     x : astropy.units.Quantity
-        Projected pulsar semi-major axis (aka ASINI) in ``pint.ls``
+        Projected pulsar semi-major axis (aka ASINI) in ``u.lsec``
     i : astropy.coordinates.Angle or astropy.units.Quantity, optional
         Inclination angle, in ``u.deg`` or ``u.rad.`` Default is 60 deg.
     mp : astropy.units.Quantity, optional
@@ -508,7 +506,7 @@ def companion_mass(
     >>> import pint
     >>> import pint.derived_quantities
     >>> from astropy import units as u
-    >>> print(pint.derived_quantities.companion_mass(1*u.d, 2*pint.ls, inc=30*u.deg, mpsr=1.3*u.Msun))
+    >>> print(pint.derived_quantities.companion_mass(1*u.d, 2*u.lsec, inc=30*u.deg, mpsr=1.3*u.Msun))
     0.6363138973397279 solMass
 
     Notes
@@ -626,12 +624,12 @@ def pbdot(
     """
     f = (1 + (73.0 / 24) * e**2 + (37.0 / 96) * e**4) / (1 - e**2) ** (7.0 / 2)
     value = (
-        (const.G / const.c**3) ** (5.0 / 3)
+        (pint.Tsun) ** (5.0 / 3)
         * (pb / (2 * np.pi)) ** (-5.0 / 3)
         * (-192 * np.pi / 5)
         * f
-        * (mp * mc)
-        / (mp + mc) ** (1.0 / 3)
+        * (mp * mc).to_value(u.Msun**2)
+        / (mp + mc).to_value(u.Msun) ** (1.0 / 3)
     )
     return value.to(u.s / u.s)
 
@@ -688,11 +686,11 @@ def gamma(
 
     """
     value = (
-        (const.G / const.c**3) ** (2.0 / 3)
+        (pint.Tsun) ** (2.0 / 3)
         * (pb / (2 * np.pi)) ** (1.0 / 3)
         * e
-        * (mc * (mp + 2 * mc))
-        / (mp + mc) ** (4.0 / 3)
+        * (mc * (mp + 2 * mc)).to_value(u.Msun**2)
+        / (mp + mc).to_value(u.Msun) ** (4.0 / 3)
     )
     return value.to(u.s)
 
@@ -752,7 +750,7 @@ def omdot(
         3
         * (pb / (2 * np.pi)) ** (-5.0 / 3)
         * (1 / (1 - e**2))
-        * (const.G * (mp + mc) / const.c**3) ** (2.0 / 3)
+        * (pint.Tsun * (mp + mc).to_value(u.Msun)) ** (2.0 / 3)
     )
     return value.to(u.deg / u.yr, equivalencies=u.dimensionless_angles())
 
@@ -774,7 +772,7 @@ def sini(
     pb : astropy.units.Quantity
         Binary orbital period
     x : astropy.units.Quantity
-        Semi-major axis, A1SINI, in units of ``pint.ls``
+        Semi-major axis, A1SINI, in units of ``u.lsec``
 
     Returns
     -------
@@ -805,11 +803,12 @@ def sini(
     """
 
     return (
-        (const.G) ** (-1.0 / 3)
+        (pint.Tsun) ** (-1.0 / 3)
         * (pb / 2 / np.pi) ** (-2.0 / 3)
         * x
-        * (mp + mc) ** (2.0 / 3)
-        / mc
+        / const.c
+        * (mp + mc).to_value(u.Msun) ** (2.0 / 3)
+        / mc.to_value(u.Msun)
     ).decompose()
 
 
@@ -856,10 +855,10 @@ def dr(mp: u.Quantity, mc: u.Quantity, pb: u.Quantity) -> u.dimensionless_unscal
 
     """
     return (
-        (const.G / const.c**3) ** (2.0 / 3)
+        (pint.Tsun) ** (2.0 / 3)
         * (2 * np.pi / pb) ** (2.0 / 3)
-        * (3 * mp**2 + 6 * mp * mc + 2 * mc**2)
-        / (mp + mc) ** (4 / 3)
+        * (3 * mp**2 + 6 * mp * mc + 2 * mc**2).to_value(u.Msun**2)
+        / (mp + mc).to_value(u.Msun) ** (4 / 3)
     ).decompose()
 
 
@@ -906,10 +905,10 @@ def dth(mp: u.Quantity, mc: u.Quantity, pb: u.Quantity) -> u.dimensionless_unsca
 
     """
     return (
-        (const.G / const.c**3) ** (2.0 / 3)
+        (pint.Tsun) ** (2.0 / 3)
         * (2 * np.pi / pb) ** (2.0 / 3)
-        * (3.5 * mp**2 + 6 * mp * mc + 2 * mc**2)
-        / (mp + mc) ** (4 / 3)
+        * (3.5 * mp**2 + 6 * mp * mc + 2 * mc**2).to_value(u.Msun**2)
+        / (mp + mc).to_value(u.Msun) ** (4 / 3)
     ).decompose()
 
 
@@ -967,20 +966,20 @@ def omdot_to_mtot(
                 omdot
                 / (
                     3
-                    * (const.G / const.c**3) ** (2.0 / 3)
+                    * (pint.Tsun) ** (2.0 / 3)
                     * (pb / (2 * np.pi)) ** (-5.0 / 3)
                     * (1 - e**2) ** (-1)
                 )
             )
         )
         ** (3.0 / 2)
-    ).to(u.Msun, equivalencies=u.dimensionless_angles())
+    ).to(u.dimensionless_unscaled, equivalencies=u.dimensionless_angles()) * u.Msun
 
 
 @u.quantity_input(mp=u.Msun, mc=u.Msun, pb=u.d, i=u.deg)
 def a1sini(
     mp: u.Quantity, mc: u.Quantity, pb: u.Quantity, i: u.Quantity = 90 * u.deg
-) -> pint.ls:
+) -> u.lsec:
     r"""Pulsar's semi-major axis.
 
     The full semi-major axis is given by Kepler's third law.  This is the
@@ -1002,7 +1001,7 @@ def a1sini(
     Returns
     -------
     a1sini : astropy.units.Quantity
-        Projected semi-major axis of pulsar's orbit in ``pint.ls``
+        Projected semi-major axis of pulsar's orbit in ``u.lsec``
 
     Raises
     ------
@@ -1026,9 +1025,10 @@ def a1sini(
 
     """
     return (
-        (mc * np.sin(i))
-        * (const.G * (pb / (2 * np.pi)) ** 2 / (mp + mc) ** 2) ** (1.0 / 3)
-    ).to(pint.ls)
+        (mc.to_value(u.Msun) * np.sin(i))
+        * (pint.GMsun * (pb / (2 * np.pi)) ** 2 / (mp + mc).to_value(u.Msun) ** 2)
+        ** (1.0 / 3)
+    ).to(u.lsec)
 
 
 @u.quantity_input(pmtot=u.mas / u.yr, D=u.kpc)

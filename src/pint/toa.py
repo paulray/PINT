@@ -34,6 +34,7 @@ from astropy.coordinates import (
     CartesianDifferential,
     CartesianRepresentation,
     EarthLocation,
+    AltAz,
 )
 from loguru import logger as log
 
@@ -1260,6 +1261,8 @@ class TOAs:
            ``obs_uranus_pos``, ``obs_neptune_pos``, ``obs_earth_pos``
          - position of various celestial objects at the time of the TOA; computed
            by :func:`pint.toa.TOAs.compute_posvels`
+       * - ``alt``
+         - altitude of each TOA above the horizon
        * - ``pulse_number``
          - integer number of turns since a fiducial moment;
            optional; can be computed from a model with
@@ -2496,6 +2499,53 @@ class TOAs:
         log.debug(f"Adding column {col.name}")
         self.table.add_column(col)
 
+    def compute_altitude(self, model: "TimingModel"):
+        """Compute the altitude of each TOA, used for tropospheric delays
+
+        Stores results in the "alt" column in the TOA Table
+
+        Parameters
+        ----------
+        model : pint.models.timing_model.TimingModel
+
+        Notes
+        -----
+        The RA,Dec coordinates used for this calculation
+        are stored in the TOA table metadata as ``meta['RA']`` and ``meta['DEC']``
+        (both decimal degrees)
+        """
+        altitudes = np.zeros(len(self)) * u.deg
+        coord = model._parent.coords_as_ICRS()
+        mjds = Time(self.get_mjds(), format="mjd")
+        for obs, grp in self.get_obs_groups():
+            site = get_observatory(obs)
+            if isinstance(site, TopoObs):
+                altitudes[grp] = coord.transform_to(
+                    AltAz(location=site.earth_location_itrf(), obstime=mjds[grp])
+                ).alt
+            elif isinstance(site, SatelliteObs):
+                # for satellites, the altitude does not matter
+                altitudes[grp] = np.nan
+            else:
+                # Grab locations for each TOA
+                loclist = np.array([t.location for t in self.table[grp]["mjd"]])
+                if loclist[0] is None:
+                    altitudes[grp] = np.nan
+                else:
+                    locs = EarthLocation(
+                        x=loclist["x"] * u.m, y=loclist["y"] * u.m, z=loclist["z"] * u.m
+                    )
+                    altitudes[grp] = coord.transform_to(
+                        AltAz(location=locs, obstime=mjds[grp])
+                    ).alt
+        if not "alt" in self.table.colnames:
+            # Now add the new column to the table
+            self.table.add_column(table.Column(name="alt", data=altitudes))
+        else:
+            self.table["alt"] = altitudes
+        self.table.meta["RA"] = coord.ra.deg
+        self.table.meta["DEC"] = coord.dec.deg
+
     def update_mjd_float(self) -> None:
         """Update the ``mjd_float`` column from the ``mjd`` column"""
         self["mjd_float"] = np.array([t.mjd for t in self["mjd"]], dtype=float) * u.d
@@ -2674,7 +2724,7 @@ class TOAs:
             nt.table = table.vstack(
                 tables, join_type="exact", metadata_conflicts="silent"
             )
-        except table.np_utils.TableMergeError as e:
+        except table.TableMergeError as e:
             # the astropy vstack will enforce having the same columns throughout
             # but the error messages aren't very useful.
             # This isn't an exhaustive check
@@ -2693,7 +2743,7 @@ class TOAs:
                     message.append(
                         f"File {i+1} has missing column(s): {','.join(missing_columns)}"
                     )
-            raise table.np_utils.TableMergeError(", ".join(message)) from e
+            raise table.TableMergeError(", ".join(message)) from e
 
             # Fix the table meta data about filenames
         nt.table.meta["filename"] = nt.filename

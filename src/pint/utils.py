@@ -359,6 +359,9 @@ prefix_pattern = [
     re.compile(r"^([a-zA-Z]+)0*(\d+)$"),  # For the prefix like F12
     re.compile(r"^([a-zA-Z0-9]+_)(\d+)$"),  # For the prefix like DMXR1_3
     re.compile(r"([a-zA-Z]+_[a-zA-Z]+)(\d+)$"),  # for prefixes like NE_SW2?
+    re.compile(
+        r"^([a-zA-Z]+_[a-zA-Z]+_)(\d+)$"
+    ),  # for prefixes like CHROMGAUSS_EPOCH_1
 ]
 
 
@@ -1270,7 +1273,9 @@ def get_prefix_timeranges(
     """
     if prefixname.endswith("_"):
         prefixname = prefixname[:-1]
-    prefix_mapping = model.get_prefix_mapping(f"{prefixname}_")
+    prefix_mapping = model.get_prefix_mapping(
+        f"{prefixname}DM_" if prefixname == "SWX" else f"{prefixname}_"
+    )
     r1 = np.zeros(len(prefix_mapping))
     r2 = np.zeros(len(prefix_mapping))
     indices = np.zeros(len(prefix_mapping), dtype=np.int32)
@@ -2093,7 +2098,7 @@ def ELL1_check(
     Parameters
     ----------
     A1 : astropy.units.Quantity
-        Projected semi-major axis (aka ASINI) in `pint.ls`
+        Projected semi-major axis (aka ASINI) in `u.lsec`
     E : astropy.units.Quantity (dimensionless)
         Eccentricity
     TRES : astropy.units.Quantity

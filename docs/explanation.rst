@@ -67,18 +67,22 @@ is that ``numpy`` provides floating-point types, for example,
    >>> (10*u.year*np.finfo(np.longdouble).eps).to(u.ns)
    <Quantity 0.03421482 ns>
 
-These numbers are represented with 80 bits, and most desktop and server
-machines have hardware for computing with these numbers, so they are not
-much slower than ordinary ("double-precision", 64-bit) floating-point
-numbers. Let me warn you about one point of possible confusion: modern
-computers have very complicated cache setups that prefer data to be
-aligned just so in memory, so ``numpy`` generally pads these numbers out
-with zeroes and stores them in larger memory spaces. Thus you will often
-see ``np.float96`` and ``np.float128`` types; these contain only
-numbers with 80-bit precision. Actual 128-bit precision is not currently
-available in ``numpy``, in part because on almost all current machines all
-calculations must be carried out in software, which takes 20-50 times as
-long.
+On typical x86_64 machines these values use 80-bit extended precision, with
+hardware support so they are not much slower than ordinary
+("double-precision", 64-bit) floating-point numbers. Modern CPUs have
+complicated cache alignment preferences, so ``numpy`` often pads these
+numbers in memory; you will therefore often see ``np.float96`` or
+``np.float128`` *dtypes* that still hold only 80-bit precision.
+
+True IEEE binary128 (about 33 decimal digits) *is* available as
+``numpy.longdouble`` on some platforms — notably Linux on aarch64 (including
+Apple Silicon hosts running a native ``linux/arm64`` container). Those
+operations are usually implemented in software and can be slower per
+operation than 80-bit hardware ``longdouble``, but they provide more
+precision. By contrast, native macOS ARM Python builds typically make
+``numpy.longdouble`` an alias of ``float64``, which is not enough for PINT;
+use a Linux arm64 container or an x86_64 (Rosetta) environment instead (see
+:ref:`Installation`).
 
 An alternative approach to dealing with more precision than your machine's
 floating-point numbers natively support is to represent numbers as a pair
@@ -270,7 +274,9 @@ Here are some examples for `DMJUMP` parameters in a par file:
 
 Similar offsets also arise in the case of narrowband TOAs. Unlike the wideband case, these offsets 
 manifest as system-dependent corrections to the DM delay. They are modeled using the `FDJUMPDM` parameters
-(see see :class:`pint.models.dispersion_model.FDJumpDM`)
+(see :class:`pint.models.dispersion_model.FDJumpDM`).
+A positive `FDJUMPDM` contributes a positive DM (and thus a positive dispersion delay) on the
+selected TOAs, matching the Tempo2 convention.
 
 Here are some examples for `FDJUMPDM` parameters in a par file:
     `FDJUMPDM   -f 430_PUPPI       1e-4  1   1e-5`
@@ -825,6 +831,25 @@ well as one might hope in practice and must be considered experimental.
 
 .. _Gauss-Newton_algorithm: https://en.wikipedia.org/wiki/Gauss%E2%80%93Newton_algorithm
 .. _chaotic: https://en.wikipedia.org/wiki/Newton_fractal
+
+Caching
+'''''''
+
+To speed up some of the fitting calculations, the results of expensive steps are cached for subsequent steps.  
+Currently this explicitly includes:
+
+1. Pulsar-to-SSB delay calculations through :meth:`~pint.models.astrometry.Astrometry.ssb_to_psb_xyz_ECL` and 
+:meth:`~pint.models.astrometry.Astrometry.ssb_to_psb_xyz_ICRS`.  The results are cached for a given time
+(usually a set of TOAs), and they are stored separately for ECL and ICRS coordinates.  The cache can be explicitly cleared by 
+using :meth:`~pint.models.astrometry.Astrometry.clear_ssb_cache`. This caching can be turned off by setting 
+``$PINT_DISABLE_ASTROMETRY_CACHE`` to 1.
+
+2. Troposphere delays (if ``CORRECT_TROPOSPHERE`` is ``True``) through :meth:`~pint.models.troposphere_delay.TroposphereDelay.troposphere_delay`, 
+where the results are stored in the TOA table (columns ``alt`` and ``tropo_delay``).  This calculation can be explicitly reset by using 
+:meth:`~pint.models.troposphere_delay.TroposphereDelay.recompute_troposphere_delay`. This caching can be turned off by setting 
+``$PINT_DISABLE_TROPOSPHERE_CACHE`` to 1.  
+
+All explicit caching can be turned off by setting ``$PINT_DISABLE_CACHE`` to 1.
 
 Coding Style
 ------------

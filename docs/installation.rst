@@ -18,11 +18,11 @@ PINT requires Python 3.9+ [1]_
 
 Your Python must have the package installation tool pip_ installed.  Also make sure your ``setuptools`` are up to date (e.g. ``pip install -U setuptools``).
 
-We highly recommend using a Conda_/`Anaconda <https://www.anaconda.com/products/individual>`_ environment or the package isolation tool virtualenv_.
-
+In most cases, we recommend using an isolated environment, such as virtualenv_, `Pixi <https://pixi.prefix.dev/latest/>`_, 
+or Conda_/`Anaconda <https://www.anaconda.com/products/individual>`_/`Miniconda <https://www.anaconda.com/docs/getting-started/miniconda/main>`_. 
 
 IMPORTANT Notes!
----------------
+----------------
 
 Naming conflict
 '''''''''''''''
@@ -30,12 +30,66 @@ Naming conflict
 PINT has a naming conflict with the `pint <https://pypi.org/project/Pint/>`_ units package available from PyPI (i.e. using pip) and conda.  
 Do **NOT** ``pip install pint`` or ``conda install pint``!  See :ref:`Basic Install via pip` or :ref:`Install with Anaconda`.
 
-Apple M1/M2 processors
-''''''''''''''''''''''
+Apple Silicon (M1/M2/M3/M4 ...) processors
+'''''''''''''''''''''''''''''''''''''''''
 
-PINT requires ``longdouble`` (80- or 128-bit floating point) arithmetic within ``numpy``, which is currently not supported natively on M1/M2 Macs. 
-However, you can use an x86 version of ``conda`` even on an M1/M2 Mac: see `instructions for using Apple Intel packages on Apple silicon <https://conda-forge.org/docs/user/tipsandtricks.html#installing-apple-intel-packages-on-apple-silicon>`_. 
-It's possible to have `parallel versions of conda for x86 and ARM <https://towardsdatascience.com/python-conda-environments-for-both-arm64-and-x86-64-on-m1-apple-silicon-147b943ffa55>`_.
+PINT requires ``longdouble`` (80- or 128-bit floating point) arithmetic within
+``numpy``. On **native macOS ARM** Python builds, ``numpy.longdouble`` is usually
+aliased to ``float64``, which is not enough for high-precision timing.
+
+**Recommended: native-speed Linux containers (arm64)**
+
+Use a multi-arch Linux container. On Apple Silicon Docker pulls the
+``linux/arm64`` image and runs it at native speed (not Rosetta). Such images
+provide true IEEE binary128 ``numpy.longdouble`` — more precision than typical
+x86_64 80-bit ``longdouble``::
+
+    # NANOGrav 20-year analysis environment
+    docker pull nanograv/ng20:cpu
+    docker run --rm -it \
+      -e HOST_UID=$(id -u) -e HOST_GID=$(id -g) \
+      -v "$PWD":/work -w /work \
+      nanograv/ng20:cpu bash
+
+Quick check inside the container::
+
+    python -c "import numpy as np; print(np.finfo(np.longdouble))"
+
+You should see a ``float128`` / binary128-class result (eps around ``1e-34``),
+not ``float64``.
+
+Image and further docs:
+
+* `nanograv/ng20 <https://hub.docker.com/r/nanograv/ng20>`_
+
+This image also works as a VS Code / Cursor Dev Container.
+
+**Optional: ``pintk`` GUI via X11**
+
+To display ``pintk`` from the container on a Mac, run an X server (e.g. XQuartz),
+allow local connections (``xhost + 127.0.0.1``), and pass ``DISPLAY`` into the
+container, for example::
+
+    docker run --rm -it \
+      -e HOST_UID=$(id -u) -e HOST_GID=$(id -g) \
+      -e DISPLAY=host.docker.internal:0 \
+      -v "$PWD":/work -w /work \
+      nanograv/ng20:cpu \
+      pintk your.par your.tim
+
+For Dev Containers, set the same ``DISPLAY`` value (and any needed X11 mounts)
+in a local override such as ``.devcontainer/devcontainer.local.json``; keep that
+file untracked.
+
+
+**Alternative: Rosetta / osx-64 conda or Pixi**
+
+An x86_64 Python stack under Rosetta also provides 80-bit ``longdouble``, but
+is slower than a native arm64 Linux container. With Pixi, set
+``platforms = ["osx-64"]`` in ``pixi.toml``, or follow
+`conda-forge tips for Apple Intel packages on Apple silicon
+<https://conda-forge.org/docs/user/tipsandtricks.html#installing-apple-intel-packages-on-apple-silicon>`_
+(parallel arm64 and x86 conda installs are possible).
 
 
 Basic Install via pip
@@ -50,11 +104,23 @@ For most users, who don't want to develop the PINT code, installation should jus
 
 By default this will install in your system site-packages.  Depending on your system and preferences, you may want to append ``--user`` 
 to install it for just yourself (e.g. if you don't have permission to write in the system site-packages), or you may want to create a 
-virtualenv to work on PINT (using a virtualenv is highly recommended by the PINT developers).  In that case, you just activate your 
+virtualenv or Pixi environment to work on PINT.  In that case, you just activate your 
 virtualenv before running the ``pip`` command above.
 
+Install with Pixi
+-----------------
 
-.. _anaconda:
+`Pixi <https://pixi.prefix.dev/latest/>`_ is a fast and simple package management tool that uses conda under the hood. It is very quick and easy to `install <https://pixi.prefix.dev/latest/installation/>`_.  
+Once you have it installed, you can set up a PINT environment (here called "PINT") like this.  First ``cd`` to where you want the environment directory to live, then::
+
+   $ pixi init PINT
+   $ cd PINT
+   $ pixi add pint-pulsar
+   $ pixi shell
+
+Now you can run PINT commands and ``import pint`` in the Python that lives in the Pixi environment you just created and activated.
+
+
 
 Install with Anaconda
 ---------------------
@@ -79,7 +145,7 @@ If your python setup is "nice", you should be able to install as easily as::
    (pint) $ python
    >>> import pint
 
-Note that you can use your own method to activate your virtualenv if you don't have virtualenvwrapper_ installed.
+Note that you can use your own method to activate your virtualenv (or Pixi or conda environment) if you don't have virtualenvwrapper_ installed.
 This *should* install PINT along with any python packages it needs to run. (If
 you want to run the test suite or work on PINT code, see below.)
 Note that the ``-e`` installs PINT in "editable" or "develop" mode.  This means that the source code is what is actually being run,
@@ -92,26 +158,6 @@ with not having a "nice" python environment. See the next section for some tips.
 
 Potential Install Issues
 ------------------------
-
-Old setuptools (``egg-info`` error message)
-'''''''''''''''''''''''''''''''''''''''''''
-
-PINT's ``setup.cfg`` is written in a declarative style that does not work with
-older versions of ``setuptools``. The lack of a sufficiently recent version of
-``setuptools`` is often signalled by the otherwise impenetrable error message
-``error: 'egg_base' must be a directory name (got src)``. You can upgrade with
-``pip``::
-
-   $ pip install -U pip setuptools
-
-If this does not help, check your versions of installed things::
-
-   $ pip list
-
-You should be able to upgrade to ``setuptools`` version at least ``0.41``. If
-running ``pip`` does not change the version that appears on this list, or if
-your version changes but the problem persists, you may have a problem with your
-python setup; read on.
 
 Bad ``PYTHONPATH``
 ''''''''''''''''''
@@ -146,18 +192,6 @@ work in clean virtualenvs. If you saved the output of ``pip freeze`` above, you
 should be able to use it to create a virtualenv with all the same packages you
 used to have in your user directory.
 
-Bad ``conda`` setup
-'''''''''''''''''''
-
-Conda_ is a tool that attempts to create isolated environments, like a
-combination of virtualenv and ``pip``. It should make installing scientific
-software with lots of dependencies easy and reliable, and you should just be
-able to set up an appropriate ``conda`` environment and use the basic install
-instructions above. But it may not work.
-
-Specifically, for some reason the python 3 version of ``conda`` does not
-provide the ``gdbm`` module, which ``astropy`` needs to work on Linux. Good
-luck.
 
 .. _virtualenv: https://virtualenv.pypa.io/en/latest/
 .. _virtualenvwrapper: https://virtualenvwrapper.readthedocs.io/en/latest/
@@ -172,7 +206,6 @@ You very likely want to install in a virtualenv_ and using the develop mode ``pi
 Then you will need to install the additional development dependencies::
 
    $ pip install -Ur requirements_dev.txt
-
 
 PINT development (building the documentation) requires pandoc_, which isn't a
 python package and therefore needs to be installed in some way appropriate for

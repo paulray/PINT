@@ -77,7 +77,13 @@ from pint.phase import Phase
 from pint.pulsar_ecliptic import OBL, PulsarEcliptic
 from pint.toa import TOAs
 from pint.types import file_like, time_like
-from pint.utils import colorize, open_or_use, split_prefixed_name, xxxselections
+from pint.utils import (
+    colorize,
+    open_or_use,
+    split_prefixed_name,
+    xxxselections,
+    get_unit,
+)
 
 __all__ = [
     "DEFAULT_ORDER",
@@ -829,6 +835,63 @@ class TimingModel:
         for k, v in fitp.items():
             p = getattr(self, k)
             p.uncertainty = v if isinstance(v, u.Quantity) else v * p.units
+
+    def add_params(self, **kwargs) -> None:
+        """Add parameters to a model simply.  Note that this will only work for new parameters
+
+        Parameters
+        ----------
+        kwargs : dict
+            Any additional parameter/value pairs that will add to those in the model.  Values can be quantities.
+
+        Examples
+        --------
+        >>> model.add_params(F2=-2e-13, JUMP="FREQ  1400.0 2000.0 0.1 0")
+
+        Notes
+        -----
+        This will not work to change existing parameters.
+
+        This also cannot be used to add a ``BINARY`` component, or add parameters for a ``BINARY`` model if the model is not present.
+
+        See Also
+        --------
+        :meth:`~pint.models.timing_model.TimingModel.set_param_values`
+        """
+        # imoprt here to avoid circular import
+        from pint.models import model_builder
+
+        mb = model_builder.ModelBuilder()
+        param_dict = {}
+        for k, v in kwargs.items():
+            if k not in self.params:
+                if isinstance(v, u.Quantity):
+                    param_dict[k] = [
+                        str(v.to_value(get_unit(k))),
+                    ]
+                else:
+                    param_dict[k] = [
+                        str(v),
+                    ]
+            else:
+                raise AttributeError(
+                    f"Parameter '{k}' is already present in timing model, not overriding; use model.set_param_values() instead"
+                )
+        selected, conflict, param_not_in_pint = mb.choose_model(
+            param_dict,
+        )
+        # see if we need to add any new components
+        cps = [
+            mb.all_components.components[comp]
+            for comp in selected
+            if not comp in self.components.keys()
+        ]
+        for cp in cps:
+            log.debug(f"Adding component '{cp}'")
+            self.add_component(cp, setup=True, validate=True)
+        # at this point do not allow input as TCB
+        mb._setup_model(self, param_dict, allow_tcb=False)
+        self.validate(allow_tcb=False)
 
     @property_exists
     def components(self) -> Dict[str, "Component"]:
@@ -1700,7 +1763,7 @@ class TimingModel:
 
         for nf in self.dm_covariance_matrix_funcs:
             result += nf(toas)
-        return result
+        return result.astype(float)
 
     def wideband_covariance_matrix(self, toas: TOAs) -> np.ndarray:
         """Get the (2*Ntoa x 2*Ntoa) wideband covariance matrix for noise models.
@@ -1711,7 +1774,7 @@ class TimingModel:
         N = np.diag(self.scaled_wideband_uncertainty(toas) ** 2)
         U = self.noise_model_wideband_designmatrix(toas)
         Phi = self.noise_model_basis_weight(toas)
-        return N + np.dot(U * Phi[None, :], U.T) if U is not None else N
+        return (N + np.dot(U * Phi[None, :], U.T) if U is not None else N).astype(float)
 
     def scaled_toa_uncertainty(self, toas: TOAs) -> u.Quantity:
         """Get the scaled TOA data uncertainties noise models.
@@ -1734,7 +1797,7 @@ class TimingModel:
 
         for nf in self.scaled_toa_uncertainty_funcs:
             result += nf(toas)
-        return result
+        return result.astype(float)
 
     def scaled_dm_uncertainty(self, toas: TOAs) -> u.Quantity:
         """Get the scaled DM data uncertainties noise models.
@@ -1757,7 +1820,7 @@ class TimingModel:
 
         for nf in self.scaled_dm_uncertainty_funcs:
             result += nf(toas)
-        return result
+        return result.astype(float)
 
     def scaled_wideband_uncertainty(self, toas: TOAs) -> np.ndarray:
         """Returns the combined scaled TOA and DM uncertainty values as a single
@@ -1776,14 +1839,14 @@ class TimingModel:
         """
         terr = self.scaled_toa_uncertainty(toas).to_value(u.s)
         derr = self.scaled_dm_uncertainty(toas).to_value(pint.dmu)
-        return np.hstack((terr, derr))
+        return np.hstack((terr, derr)).astype(float)
 
     def noise_model_designmatrix(self, toas: TOAs) -> np.ndarray:
         """Returns the joint design/basis matrix for all noise components."""
         if len(self.basis_funcs) == 0:
             return None
         result = [nf(toas)[0] for nf in self.basis_funcs]
-        return np.hstack(result)
+        return np.hstack(result).astype(float)
 
     def noise_model_dm_designmatrix(self, toas: TOAs) -> np.ndarray:
         """Returns the design/basis matrix for all noise components for wideband DMs.
@@ -1796,7 +1859,7 @@ class TimingModel:
                     for nc in self.NoiseComponent_list
                     if nc.introduces_correlated_errors
                 ]
-            )
+            ).astype(float)
             if self.has_correlated_errors
             else None
         )
@@ -1812,7 +1875,7 @@ class TimingModel:
                     for nc in self.NoiseComponent_list
                     if nc.introduces_correlated_errors
                 ]
-            )
+            ).astype(float)
             if self.has_correlated_errors
             else None
         )
@@ -1861,7 +1924,7 @@ class TimingModel:
         if len(self.basis_funcs) == 0:
             return None
         result = [nf(toas)[1] for nf in self.basis_funcs]
-        return np.hstack(list(result))
+        return np.hstack(list(result)).astype(float)
 
     def full_basis_weight(self, toas: TOAs) -> np.ndarray:
         """Returns the joint weight vector for all timing and noise components.
@@ -1876,7 +1939,9 @@ class TimingModel:
         phi_tm = np.ones(npar_tm) * 1e40
         phi_nm = self.noise_model_basis_weight(toas)
 
-        return np.hstack((phi_tm, phi_nm)) if phi_nm is not None else phi_tm
+        return (
+            np.hstack((phi_tm, phi_nm)).astype(float) if phi_nm is not None else phi_tm
+        )
 
     def noise_model_dimensions(self, toas: TOAs) -> Dict[str, Tuple[int, int]]:
         """Number of basis functions for each noise model component.
@@ -2368,7 +2433,7 @@ class TimingModel:
                 M[:, ii] = q.to_value(the_unit) / F0.value
                 units.append(the_unit / F0.unit)
 
-        return M, params, units
+        return M.astype(float), params, units
 
     def dm_designmatrix(
         self, toas: TOAs, incoffset=True
@@ -2428,7 +2493,7 @@ class TimingModel:
                 M[:, ii] = q.to_value(the_unit)
                 units.append(the_unit)
 
-        return M, params, units
+        return M.astype(float), params, units
 
     def wideband_designmatrix(self, toas: TOAs, incoffset=True):
         """The wideband design matrix including the partial derivatives of the
@@ -2542,9 +2607,9 @@ class TimingModel:
         assert format.lower() in ["text", "markdown"]
         format = format.lower()
 
-        model_name = self.name.split("/")[-1] if self.name != "" else "Model 1"
+        model_name = str(self.name).split("/")[-1] if self.name != "" else "Model 1"
         if othermodel.name != "":
-            other_model_name = othermodel.name.split("/")[-1]
+            other_model_name = str(othermodel.name).split("/")[-1]
         else:
             other_model_name = "Model 2"
 
@@ -3467,7 +3532,7 @@ class TimingModel:
                 s += f"T0  = {t0:SP}\n"
                 outdict["T0"] = t0
 
-                a1 = self.A1.quantity if self.A1.quantity is not None else 0 * pint.ls
+                a1 = self.A1.quantity if self.A1.quantity is not None else 0 * u.lsec
                 if rms is not None and ntoas is not None:
                     s += pint.utils.ELL1_check(
                         a1,
@@ -3479,7 +3544,7 @@ class TimingModel:
                 s += "\n"
             # Masses and inclination
             if not self.A1.frozen:
-                a1 = self.A1.as_ufloat(pint.ls)
+                a1 = self.A1.as_ufloat(u.lsec)
                 # This is the mass function, done explicitly so that we get
                 # uncertainty propagation automatically.
                 # TODO: derived quantities funcs should take uncertainties
@@ -3514,7 +3579,7 @@ class TimingModel:
                         omdot
                         / (
                             3
-                            * (c.G * u.Msun / c.c**3).to_value(u.s) ** (2.0 / 3)
+                            * pint.Tsun ** (2.0 / 3)
                             * ((pb * 86400 / 2 / np.pi)) ** (-5.0 / 3)
                             * (1 - e**2) ** -1
                         )
