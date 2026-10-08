@@ -594,6 +594,17 @@ components.
 
    - If the ``BINARY`` line is present in the parameter file, its value
      determines which binary model to use; if not, no binary model is used.
+     An optional ``BINARY2`` line selects an outer-orbit component for a
+     hierarchical triple (parameters are suffixed with ``_2``, e.g. ``PB_2``;
+     outer wrappers include ``BinaryDD2``, ``BinaryBT2``, and ``BinaryELL12``).
+     The outer delay is accumulated first, and the inner binary is evaluated at
+     barycentric time minus that accumulated delay, so the outer Rømer delay
+     Doppler-shifts the inner orbit. This is the usual hierarchical
+     light-travel-time coupling of two independent Keplerian orbits; it is not
+     a dynamical three-body model (there is no companion–companion gravity,
+     Kozai–Lidov coupling, or mutual Shapiro delay between the companions).
+     The outer orbit is period-parameterized only: ``FBn`` and ``ORBWAVE`` are
+     not supported for ``BINARY2`` (the inner orbit may still use them).
    - Each model component has one or more "special parameters" or families of
      parameters identified by a common prefix. If a par file contains a special
      parameter, or a known alias of one, then the timing model uses the
@@ -752,6 +763,12 @@ likelihood values of :math:`b` and its uncertainties are given by
 This is what is implemented in PINT's fitters, both the generalized
 least-squares fitter for narrowband data, and the fitter used for all wideband
 data (whether it has correlated errors or not).
+
+Most of PINT's stochastic components describe :math:`\phi` with a Fourier basis
+and a diagonal set of weights, as above. PINT also provides a Gaussian process
+whose covariance is specified directly in the time domain, in which case
+:math:`\phi` is a dense matrix rather than a diagonal one; see
+:ref:`Time-domain solar wind noise`.
 
 It is perhaps worth noting that if :math:`B^{-1}` were zero or omitted, these
 would be the equations for a linear least squares fit for :math:`b` to match
@@ -1024,3 +1041,8 @@ by Tim Peters::
 .. _PEP8: https://www.python.org/dev/peps/pep-0008/
 .. _pytest: https://docs.pytest.org/en/latest/
 .. _pdb: https://docs.python.org/3/library/pdb.html
+
+.. toctree::
+   :maxdepth: 2
+
+   timedomain-solar-wind
